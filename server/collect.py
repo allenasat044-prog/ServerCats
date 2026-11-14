@@ -448,6 +448,26 @@ def cleanup(cfg):
         cur = {"files": len(files), "waiting": len(old), "waiting_bytes": sum(os.path.getsize(f) for f in old)}
     return {"dir": tmp, "days": days, "current": cur, "last_run": read_json(os.path.join(cfg["STATE_DIR"], "cleanup.json"))}
 
+def mac_sshd_text():
+    """macOS: `sshd -T` needs root, so rebuild the effective settings from the config files + OpenSSH defaults."""
+    vals = {"port": "22", "permitrootlogin": "prohibit-password", "passwordauthentication": "yes", "pubkeyauthentication": "yes",
+            "permitemptypasswords": "no", "maxauthtries": "6", "logingracetime": "120", "x11forwarding": "no", "clientaliveinterval": "0"}
+    seen = set()
+    files = sorted(glob.glob("/etc/ssh/sshd_config.d/*.conf")) + ["/etc/ssh/sshd_config"]
+    found = False
+    for f in files:
+        txt = read(f)
+        if txt is None: continue
+        found = True
+        for l in txt.splitlines():
+            l = l.strip()
+            if not l or l.startswith("#"): continue
+            k, _, v = l.partition(" ")
+            k = k.lower(); v = v.strip()
+            if k == "match": break               # settings after Match only apply to some connections
+            if k in vals and k not in seen: vals[k] = v; seen.add(k)   # sshd uses the FIRST value it sees
+    return "\n".join(f"{k} {v}" for k, v in vals.items()) if found else None
+
 def security(cfg, usr, stor):
     checks = []
     def add(i, title, level, detail): checks.append({"id": i, "title": title, "level": level, "detail": detail})
@@ -479,8 +499,15 @@ def security(cfg, usr, stor):
         add("fw", "Firewall active", "pass" if fw["active"] else "fail", "ufw is " + ("active" if fw["active"] else "inactive"))
         if fw["active"]: add("fw-default", "Incoming traffic denied by default", "pass" if "deny (incoming)" in (fw["defaults"] or "") else "fail", fw["defaults"] or "unknown")
     # ssh
-    ssh = {"service": None if IS_MAC else (sh(["systemctl", "is-active", "ssh"], any_rc=True) or "").strip() or None, "config": None}
+    ssh = {"service": None if IS_MAC else (sh(["systemctl", "is-active", "ssh"], any_rc=True) or "").strip() or None, "config": None, "source": "sshd -T"}
     s = sh(["sshd", "-T"])
+    if IS_MAC:
+        on = subprocess.run(["nc", "-z", "-w", "1", "127.0.0.1", "22"], capture_output=True).returncode == 0
+        ssh["service"] = "on (Remote Login enabled)" if on else "off (Remote Login disabled)"
+        add("ssh-remote", "Remote Login (SSH server)", "warn" if on else "pass",
+            "SSH is reachable on port 22; turn it off in System Settings > General > Sharing if this Mac does not need it" if on else "SSH is off, so nothing can log in remotely")
+        if not s:
+            s = mac_sshd_text(); ssh["source"] = "/etc/ssh config files plus OpenSSH defaults (run with sudo for sshd -T)"
     if s:
         c = {}
         for l in s.splitlines():
@@ -488,13 +515,23 @@ def security(cfg, usr, stor):
         ssh["config"] = {k: ", ".join(c[k]) for k in ("port", "permitrootlogin", "passwordauthentication", "pubkeyauthentication",
                          "permitemptypasswords", "maxauthtries", "logingracetime", "x11forwarding", "allowgroups", "clientaliveinterval") if k in c}
         g = ssh["config"].get
-        add("ssh-root", "Root login over SSH disabled", "pass" if g("permitrootlogin") in ("no", "prohibit-password") else "fail", f'PermitRootLogin {g("permitrootlogin")}')
-        add("ssh-empty", "Empty passwords refused", "pass" if g("permitemptypasswords") == "no" else "fail", f'PermitEmptyPasswords {g("permitemptypasswords")}')
-        add("ssh-tries", "Limited login attempts", "pass" if int(g("maxauthtries", 6)) <= 4 else "warn", f'MaxAuthTries {g("maxauthtries")}')
-        add("ssh-pw", "Key-only SSH login", "pass" if g("passwordauthentication") == "no" else "warn",
-            "password login is " + ("off" if g("passwordauthentication") == "no" else "on (stronger with keys only; set SSH_PASSWORD_AUTH=no once keys are installed)"))
+        def unread(i, title, key):
+            add(i, title, "unknown", f"{key} could not be read (run the collector with sudo on the server)")
+        v = g("permitrootlogin")
+        if v is None: unread("ssh-root", "Root login over SSH disabled", "PermitRootLogin")
+        else: add("ssh-root", "Root login over SSH disabled", "pass" if v in ("no", "prohibit-password", "without-password") else "fail", f"PermitRootLogin {v}")
+        v = g("permitemptypasswords")
+        if v is None: unread("ssh-empty", "Empty passwords refused", "PermitEmptyPasswords")
+        else: add("ssh-empty", "Empty passwords refused", "pass" if v == "no" else "fail", f"PermitEmptyPasswords {v}")
+        v = g("maxauthtries")
+        if v is None or not str(v).strip().isdigit(): unread("ssh-tries", "Limited login attempts", "MaxAuthTries")
+        else: add("ssh-tries", "Limited login attempts", "pass" if int(v) <= 4 else "warn", f"MaxAuthTries {v}")
+        v = g("passwordauthentication")
+        if v is None: unread("ssh-pw", "Key-only SSH login", "PasswordAuthentication")
+        else: add("ssh-pw", "Key-only SSH login", "pass" if v == "no" else "warn",
+                  "password login is " + ("off" if v == "no" else "on (stronger with keys only; set SSH_PASSWORD_AUTH=no once keys are installed)"))
     else:
-        add("ssh", "SSH settings", "unknown", "run the collector with sudo and install openssh-server to read sshd -T")
+        add("ssh", "SSH settings", "unknown", "could not read the SSH configuration" if IS_MAC else "run the collector with sudo and install openssh-server to read sshd -T")
     # permissions
     sh_dirs = [d for d in stor["shared"] if d["exists"]]
     if not IS_LINUX:
@@ -532,6 +569,12 @@ def security(cfg, usr, stor):
     return {"firewall": fw, "ssh": ssh, "checks": checks, "listening": listening}
 
 # ----------------------------------------------------------------------------- report
+def testing(cfg):
+    for p in (os.path.join(cfg["STATE_DIR"], "tests.json"), os.path.join(PROJECT, ".labstate", "tests.json")):
+        d = read_json(p)
+        if d: return d
+    return None
+
 def gb(x): return f"{x / 2**30:.1f} GB"
 def hs(x): return f"{x / 2**20:.1f} MB" if x >= 2**20 else (f"{x // 1024} KB" if x >= 1024 else f"{x} B")
 
@@ -563,6 +606,8 @@ def build_report(D):
                               f'restore test {"PASSED" if lb["restore_ok"] else "FAILED"} ({lb["restored"]}/{lb["files"]} entries)' if lb else "has not run yet"))
     cnt = {k: sum(1 for x in sec["checks"] if x["level"] == k) for k in ("pass", "warn", "fail", "unknown")}
     L.append(f'Security  : {cnt["pass"]} checks passed, {cnt["warn"]} warnings, {cnt["fail"]} failed, {cnt["unknown"]} unreadable')
+    tt = D.get("testing")
+    L.append("Testing   : " + (f'{tt["pass"]} passed, {tt["warn"]} warnings, {tt["fail"]} failed ({tt["time"][:16].replace("T", " ")})' if tt else "has not run yet"))
     if not IS_ROOT: L += ["", "NOTE: not run as root, so firewall, SSH, LVM and password details are unavailable. Use sudo."]
     return "\n".join(L) + "\n"
 
@@ -588,6 +633,7 @@ def main():
     D["backup"] = section("backup", lambda: backup(cfg), errors)
     D["cleanup"] = section("cleanup", lambda: cleanup(cfg), errors)
     D["security"] = section("security", lambda: security(cfg, D["users"], D["storage"]), errors)
+    D["testing"] = section("testing", lambda: testing(cfg), errors)
     if all(D.get(k) for k in ("resources", "system", "users", "storage", "backup", "cleanup", "security")):
         D["report"] = build_report(D)
     else:

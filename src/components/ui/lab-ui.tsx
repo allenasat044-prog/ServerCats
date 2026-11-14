@@ -2,15 +2,10 @@ import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { useLab } from "@/lib/data";
 
 export function Page({ title, subtitle, children }: { title: string; subtitle?: ReactNode; children: ReactNode }) {
-  const D = useLab();
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-4 pt-24 text-foreground">
-      {D.platform !== "linux" && (
-        <div className="rounded-lg border border-sky-500/40 bg-sky-500/10 p-3 text-sm">These numbers come from <b>{D.platform === "darwin" ? "macOS (this computer)" : D.platform}</b>, not from the Linux lab server. Items that only exist on the server (LVM, ufw, cron schedule, apt packages, lab groups and folders) show as unavailable. Run <code>sudo ./server/labctl status</code> on the Ubuntu server for the lab’s real data.</div>
-      )}
       <div><h1 className="text-3xl font-semibold tracking-tight">{title}</h1>{subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}</div>
       {children}
     </div>

@@ -6,13 +6,14 @@ import System from "@/pages/System";
 import Automation from "@/pages/Automation";
 import Security from "@/pages/Security";
 import Backups from "@/pages/Backups";
+import Testing from "@/pages/Testing";
 import { LabGate } from "@/lib/data";
 import Storage from "@/pages/Storage";
 import Users from "@/pages/Users";
 import Faq from "@/pages/Faq";
 import { cn } from "@/lib/utils";
 
-export const NAV = [["/", "Home"], ["/dashboard", "Dashboard"], ["/system", "System"], ["/users", "Users & Groups"], ["/storage", "Storage"], ["/automation", "Automation"], ["/backups", "Backup & Recovery"], ["/security", "Security"], ["/faq", "FAQ"]] as const;
+export const NAV = [["/", "Home"], ["/dashboard", "Dashboard"], ["/system", "System"], ["/users", "Users & Groups"], ["/storage", "Storage"], ["/automation", "Automation"], ["/backups", "Backup & Recovery"], ["/security", "Security"], ["/testing", "Testing"], ["/faq", "FAQ"]] as const;
 
 // Animated paths behind every page except the landing page
 function PageBackground() {
@@ -40,7 +41,7 @@ export default function App() {
           <Route path="/dashboard" element={<Dashboard />} /><Route path="/system" element={<System />} />
           <Route path="/users" element={<Users />} /><Route path="/storage" element={<Storage />} />
           <Route path="/automation" element={<Automation />} /><Route path="/backups" element={<Backups />} />
-          <Route path="/security" element={<Security />} />
+          <Route path="/security" element={<Security />} /><Route path="/testing" element={<Testing />} />
         </Route>
         <Route path="/faq" element={<Faq />} />
       </Routes>

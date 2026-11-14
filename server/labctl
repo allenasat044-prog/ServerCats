@@ -17,6 +17,7 @@ LabServer administration
   labctl backup   [create|verify|restore [FILE] [DIR]]  backup, integrity check, restore demo
   labctl cleanup                                        delete old files in the lab temp folder
   labctl cron                                           install the automatic schedule
+  labctl test     [verify|troubleshoot|validate]        testing: verify services, fix simulated faults, validate outputs
   labctl status                                         read-only: collect facts for the website
   labctl all                                            every module in the right order
 
@@ -49,17 +50,30 @@ case $MODULE in
     # ${ARGS[@]+...}: an empty array is an error under `set -u` in the bash 3.2 that macOS ships
     [ "${ARGS[0]:-}" = generate-roster ] || linux_only
     exec bash "$HERE/modules/users.sh" ${ARGS[@]+"${ARGS[@]}"} ;;
+  test)
+    if [ "$(uname -s)" = Darwin ]; then
+      # macOS: read-only checks of this Mac and the website (the fault-fixing demo needs the Linux server)
+      bash "$HERE/modules/test_mac.sh"; rc=$?
+      python3 "$HERE/collect.py" >/dev/null 2>&1
+      exit $rc
+    fi
+    exec bash "$HERE/modules/test.sh" ${ARGS[@]+"${ARGS[@]}"} ;;
   system|storage|security|backup|cleanup|cron)
     linux_only
     exec bash "$HERE/modules/$MODULE.sh" ${ARGS[@]+"${ARGS[@]}"} ;;
   status)
     exec python3 "$HERE/collect.py" ${ARGS[@]+"${ARGS[@]}"} ;;
   all)
-    linux_only
+    if [ "$(uname -s)" = Darwin ]; then
+      echo "macOS: the administration modules only configure a Linux server, so nothing is changed."
+      echo "Running the read-only parts instead: tests of this Mac, then the data collector."
+      bash "$HERE/modules/test_mac.sh"; python3 "$HERE/collect.py"; exit 0
+    fi
     [ "$APPLY" = 1 ] || echo "PLAN ONLY (nothing is changed). Re-run with --apply to do it."
     for m in system storage users security backup cleanup cron; do
       bash "$HERE/modules/$m.sh" || { echo "labctl: module '$m' failed, stopping." >&2; exit 1; }
     done
+    bash "$HERE/modules/test.sh" verify validate || echo "labctl: some checks failed (see above). Run: sudo ./server/labctl test troubleshoot --apply for the fault-fixing demo." >&2
     python3 "$HERE/collect.py" ;;
   help|-h|--help) usage ;;
   *) usage; exit 1 ;;

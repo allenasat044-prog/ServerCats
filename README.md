@@ -8,13 +8,37 @@ shows the **real** state of that server. Nothing on the site is built in: every 
 
 | Part | Linux server / VM (Ubuntu) | macOS | Windows |
 |---|---|---|---|
-| **Admin scripts** (`./server/labctl system \| users \| storage \| security \| backup \| cleanup \| cron \| all`) | yes, this is what they are for | **no**: they refuse to run and change nothing | **no**: run them inside WSL or a Linux VM |
-| **Collector** (`./server/labctl status`) | full data | partial: real values of the Mac, clearly labelled (no LVM, ufw, cron, apt) | run it inside WSL / the VM |
+| **Admin scripts** (`system`, `users`, `storage`, `security`, `backup`, `cleanup`, `cron`) | yes, this is what they are for | **no**: they refuse to run and change nothing | **no**: run them inside WSL or a Linux VM |
+| **`labctl all`** | plan / apply everything, then verify + validate | read-only: tests this Mac, then collects data | run it inside WSL / the VM |
+| **`labctl test`** | verify services, fix simulated faults, validate outputs | read-only checks of this Mac and the website | run it inside WSL / the VM |
+| **Collector** (`labctl status`) | full data | real values of the Mac (firewall, Remote Login/SSH, disks, network), Linux-only items shown as unavailable | run it inside WSL / the VM |
 | **Website** (`npm run dev`) | yes | yes | yes |
 | `labctl users generate-roster N` | yes | yes | in WSL / Git Bash |
 
 The lab server is a Linux machine (apt, useradd, LVM, ufw, cron). A Mac or Windows PC is where you can
 develop and view the website, and where you can run a Linux VM for the server part.
+
+## Command cheat sheet: Windows, Linux, macOS
+
+The commands are almost the same; only the shell and the package manager differ.
+`<project>` is the folder you cloned or unzipped (for example `~/labserver`).
+
+| Task | Linux (Ubuntu server) | macOS (Terminal) | Windows (PowerShell) |
+|---|---|---|---|
+| Install Node.js | `sudo apt install nodejs npm` | `brew install node` | `winget install OpenJS.NodeJS.LTS` |
+| Go to the project | `cd ~/labserver` | `cd ~/labserver` | `cd $HOME\labserver` |
+| Install website deps | `npm install` | `npm install` | `npm install` |
+| Collect real data | `sudo ./server/labctl status` | `./server/labctl status` | `wsl sudo ./server/labctl status` |
+| Run the checks | `sudo ./server/labctl test` | `./server/labctl test` | `wsl sudo ./server/labctl test` |
+| Everything, dry run | `./server/labctl all` | `./server/labctl all` (read-only) | `wsl ./server/labctl all` |
+| Everything, for real | `sudo ./server/labctl all --apply` | not possible (use a VM) | `wsl sudo ./server/labctl all --apply` |
+| Fault-fixing demo | `sudo ./server/labctl test --apply` | not possible (use a VM) | `wsl sudo ./server/labctl test --apply` |
+| Start the website | `npm run dev -- --host` | `npm run dev` | `npm run dev` |
+| Open the website | `http://<server-ip>:5173` | `http://localhost:5173` | `http://localhost:5173` |
+| Make scripts executable | `chmod +x server/labctl server/modules/*.sh` | `chmod +x server/labctl server/modules/*.sh` | not needed (WSL: same as Linux) |
+| Fix `^M` line endings | `sed -i 's/\r$//' server/labctl server/lib/*.sh server/modules/*.sh` | `sed -i '' 's/\r$//' server/labctl server/lib/*.sh server/modules/*.sh` | run the Linux command inside WSL |
+
+Windows: the `wsl ...` commands need WSL2 with Ubuntu and the project inside the Linux file system (see the Windows section below).
 
 ## What is covered
 
@@ -27,8 +51,9 @@ develop and view the website, and where you can run a Linux VM for the server pa
 | **Backup & recovery** | tar.gz + SHA-256, gzip test, checksum verification, full restore into a scratch folder and comparison, retention, manual restore | `labctl backup [create\|verify\|restore]` |
 | **Security** | ufw firewall (SSH always allowed first, rate-limited), SSH hardening (validated, auto-reverted on error), file/home/backup permissions | `labctl security [firewall\|ssh\|permissions]` |
 | **Routine cleanup** | deletes files older than N days in the lab temp folder | `labctl cleanup` |
+| **Testing & troubleshooting** | verifies every service, creates six simulated faults (stale temp files, open permissions, wrong owner, cron stopped, firewall off, corrupt backup), detects and fixes each, then validates outputs against `lab.conf` | `labctl test [verify\|troubleshoot\|validate]` |
 
-The website has a page for each area (System, Users & Groups, Storage, Automation, Backup & Recovery, Security).
+The website has a page for each area (System, Users & Groups, Storage, Automation, Backup & Recovery, Security, Testing).
 
 ---
 
@@ -58,14 +83,17 @@ If the firewall is on, open that port first: set `FIREWALL_ALLOW_TCP="5173"` in 
 
 ## macOS
 
-A Mac cannot be the lab server (no apt, useradd, LVM or ufw), so the admin scripts stop immediately with
-"cannot run on Darwin" and change nothing. What works on a Mac:
+A Mac cannot be the lab server (no apt, useradd, LVM or ufw), so the admin scripts (`system`, `users`,
+`storage`, `security`, `backup`, `cleanup`, `cron`) stop immediately with "cannot run on Darwin" and change
+nothing. `./server/labctl test` and `./server/labctl all` run read-only checks of this Mac (firewall, Remote
+Login/SSH, network, disk, Node, website data) and never change anything. What works on a Mac:
 
 ```bash
 brew install node                              # or download Node.js from nodejs.org
 cd ~/labserver
 npm install
 ./server/labctl status                         # real values from THIS Mac, labelled as macOS
+./server/labctl test                           # read-only checks of this Mac -> Testing page
 npm run dev                                    # http://localhost:5173
 ```
 
@@ -161,7 +189,7 @@ server/
   labctl                 entry point
   lab.conf               all settings
   lib/common.sh          shared helpers (plan/apply logic, Linux guard)
-  modules/*.sh           system, users, storage, security, backup, cleanup, cron
+  modules/*.sh           system, users, storage, security, backup, cleanup, cron, test (test_mac.sh on macOS)
   collect.py             read-only collector -> public/data.json (Linux full, macOS partial)
 src/                     React + Tailwind site (pages/, components/ui/, lib/)
 ```

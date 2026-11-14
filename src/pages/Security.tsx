@@ -17,13 +17,13 @@ export default function Security() {
 sudo ./server/labctl security --apply`}</Cmd>}
       </Panel>
       <div className="grid gap-4 md:grid-cols-2">
-        <Panel title="Firewall (ufw)">
+        <Panel title={fw.kind === "macos" ? "Firewall (macOS)" : "Firewall (ufw)"}>
           {!fw.installed ? <p>ufw is not installed. <code>sudo ./server/labctl system packages --apply</code></p> : !fw.readable ? <p className="text-muted-foreground">Unreadable without root.</p> : (<>
-            <Row k="Status" v={<Level level={fw.active ? "pass" : "fail"} label={fw.active ? "active" : "inactive"} />} /><Row k="Defaults" v={fw.defaults ?? "unavailable"} />
+            <Row k="Status" v={<Level level={fw.active ? "pass" : fw.kind === "macos" ? "warn" : "fail"} label={fw.kind === "macos" ? (fw.active ? "on" : "off") : fw.active ? "active" : "inactive"} />} /><Row k="Defaults" v={fw.defaults ?? "unavailable"} />
             {fw.kind === "macos" ? <p className="text-muted-foreground">macOS filters per application rather than by port rules.</p> : <Tbl head={["To", "Action", "From"]} rows={(fw.rules ?? []).map((r: any) => [r.to, r.action, r.from])} empty="No rules." />}
           </>)}
         </Panel>
-        <Panel title="SSH server" desc="Effective settings from sshd -T (hardening lives in /etc/ssh/sshd_config.d/00-labserver.conf).">
+        <Panel title={D.platform === "darwin" ? "SSH server (Remote Login)" : "SSH server"} desc={`Effective settings from ${ssh.source ?? "sshd -T"} (hardening lives in /etc/ssh/sshd_config.d/00-labserver.conf).`}>
           <Row k="Service" v={ssh.service ?? "unavailable"} />
           {ssh.config ? Object.entries(ssh.config).map(([k, v]) => <Row key={k} k={k} v={String(v)} />) : <p className="text-muted-foreground">Unavailable: needs root and openssh-server.</p>}
         </Panel>
