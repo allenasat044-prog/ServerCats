@@ -1,3 +1,6 @@
 node_modules
 dist
 .DS_Store
+# generated on the server, never commit real machine data or the student roster
+public/data.json
+server/students.csv

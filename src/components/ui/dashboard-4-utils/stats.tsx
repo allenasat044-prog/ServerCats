@@ -1,14 +1,17 @@
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { D, fmt } from "@/lib/lab";
+import { fmt } from "@/lib/lab";
+import { useLab } from "@/lib/data";
 
-// Real values from server/collect.sh
+// Real values from server/collect.py
 export function DashboardStats() {
+  const D = useLab(), r = D.resources;
+  const who: string[] = D.who.map((l: string) => l.split(/\s+/)[0]);
   const items = [
-    { label: "CPU usage", value: `${D.cpu.pct}%`, note: `${D.cpu.cores} core(s) · load ${D.cpu.load[0]}` },
-    { label: "Memory", value: `${D.mem.pct}%`, note: `${fmt(D.mem.used)} of ${fmt(D.mem.total)}` },
-    { label: "Disk space (/)", value: `${D.disk.pct}%`, note: `${fmt(D.disk.used)} of ${fmt(D.disk.total)}` },
-    { label: "Logged in now", value: String(D.who.length), note: D.who.length ? D.who.join(", ") : `${D.active.length} accounts running processes` },
+    { label: "CPU usage", value: r.cpu.pct == null ? "—" : `${r.cpu.pct}%`, note: `${r.cpu.cores} core(s) · load ${r.cpu.load[0]}` },
+    { label: "Memory", value: r.mem.pct == null ? "—" : `${r.mem.pct}%`, note: r.mem.pct == null ? "unavailable" : `${fmt(r.mem.used)} of ${fmt(r.mem.total)}` },
+    { label: `Disk space (${r.disk.mount})`, value: `${r.disk.pct}%`, note: `${fmt(r.disk.used)} of ${fmt(r.disk.total)} on this volume` },
+    { label: "Logged in now", value: String(who.length), note: who.length ? [...new Set(who)].join(", ") : "nobody" },
   ];
   return (<>{items.map((s) => (
     <Card key={s.label} className="flex flex-col gap-3 p-6">

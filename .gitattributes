@@ -1,0 +1,5 @@
+# Shell scripts must keep Unix line endings even when checked out on Windows
+*.sh text eol=lf
+server/labctl text eol=lf
+server/lab.conf text eol=lf
+*.py text eol=lf

@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# labctl: one entry point for the LabServer administration scripts.
+#   ./labctl <module> [step] [--apply] [--force]
+# Without --apply a module only prints what it WOULD do. Run `./labctl help` for the list.
+set -u
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+usage() {
+cat <<'TXT'
+LabServer administration
+
+  labctl system   [hostname|network|update|packages]    hostname, network, OS update, software
+  labctl users    [groups|policy|accounts|perms]        groups, users, passwords, ownership
+  labctl users    generate-roster [N]                   write server/students.csv with N accounts (default 100)
+  labctl storage  [root|disk|shared]                    LVM, partitions, mounts, shared folders
+  labctl security [firewall|ssh|permissions]            ufw, SSH hardening, file permissions
+  labctl backup   [create|verify|restore [FILE] [DIR]]  backup, integrity check, restore demo
+  labctl cleanup                                        delete old files in the lab temp folder
+  labctl cron                                           install the automatic schedule
+  labctl status                                         read-only: collect facts for the website
+  labctl all                                            every module in the right order
+
+  --apply   really make the changes (needs sudo). Default is a dry-run plan.
+  --force   allow the few things that are refused by default (wiping a used disk, overwriting the roster)
+TXT
+}
+
+MODULE=${1:-help}; [ $# -gt 0 ] && shift
+APPLY=0; FORCE=0; ARGS=()
+for a in "$@"; do
+  case $a in --apply) APPLY=1 ;; --force) FORCE=1 ;; *) ARGS+=("$a") ;; esac
+done
+export LAB_APPLY=$APPLY LAB_FORCE=$FORCE
+
+# The administration modules configure Ubuntu/Debian Linux (apt, useradd, LVM, ufw, cron, ...).
+# Refuse early and clearly anywhere else instead of failing half way through.
+linux_only() {
+  [ "$(uname -s)" = Linux ] && return 0
+  cat >&2 <<MSG
+labctl: '$MODULE' configures a Linux server (Ubuntu/Debian) and cannot run on $(uname -s).
+Nothing was changed. Run it inside your Linux server or VM (see README: "Which computer runs what").
+Works on this computer:  ./server/labctl status   (read-only)   and   ./server/labctl users generate-roster
+MSG
+  exit 1
+}
+
+case $MODULE in
+  users)
+    # ${ARGS[@]+...}: an empty array is an error under `set -u` in the bash 3.2 that macOS ships
+    [ "${ARGS[0]:-}" = generate-roster ] || linux_only
+    exec bash "$HERE/modules/users.sh" ${ARGS[@]+"${ARGS[@]}"} ;;
+  system|storage|security|backup|cleanup|cron)
+    linux_only
+    exec bash "$HERE/modules/$MODULE.sh" ${ARGS[@]+"${ARGS[@]}"} ;;
+  status)
+    exec python3 "$HERE/collect.py" ${ARGS[@]+"${ARGS[@]}"} ;;
+  all)
+    linux_only
+    [ "$APPLY" = 1 ] || echo "PLAN ONLY (nothing is changed). Re-run with --apply to do it."
+    for m in system storage users security backup cleanup cron; do
+      bash "$HERE/modules/$m.sh" || { echo "labctl: module '$m' failed, stopping." >&2; exit 1; }
+    done
+    python3 "$HERE/collect.py" ;;
+  help|-h|--help) usage ;;
+  *) usage; exit 1 ;;
+esac

@@ -1,1 +1,41 @@
-{"name":"labserver","private":true,"version":"1.0.0","type":"module","scripts":{"dev":"vite","build":"vite build","preview":"vite preview","typecheck":"tsc --noEmit","refresh":"cd server && bash collect.sh && cp data.json ../src/data.json"},"dependencies":{"@radix-ui/react-accordion":"^1.2.2","@radix-ui/react-slot":"^1.1.1","class-variance-authority":"^0.7.1","clsx":"^2.1.1","framer-motion":"^11.15.0","gsap":"^3.12.5","lucide-react":"~0.469.0","motion":"^14.13.0","react":"^18.3.1","react-dom":"^18.3.1","react-router-dom":"^6.28.0","recharts":"^2.15.0","tailwind-merge":"^2.6.0","tw-animate-css":"^1.2.0"},"devDependencies":{"@tailwindcss/vite":"^4.0.0","@types/react":"^18.3.12","@types/react-dom":"^18.3.1","@vitejs/plugin-react":"^4.3.4","tailwindcss":"^4.0.0","typescript":"^5.6.3","vite":"^5.4.11"},"allowScripts":{"esbuild@0.21.5":true,"fsevents@2.3.3":true}}
+{
+  "name": "labserver",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "refresh": "python3 server/collect.py"
+  },
+  "dependencies": {
+    "@radix-ui/react-accordion": "^1.2.2",
+    "@radix-ui/react-slot": "^1.1.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "framer-motion": "^11.15.0",
+    "gsap": "^3.12.5",
+    "lucide-react": "~0.469.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0",
+    "recharts": "^2.15.0",
+    "tailwind-merge": "^2.6.0",
+    "tw-animate-css": "^1.2.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  },
+  "allowScripts": {
+    "esbuild@0.21.5": true,
+    "fsevents@2.3.3": true
+  }
+}
