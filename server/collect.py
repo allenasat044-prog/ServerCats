@@ -499,6 +499,7 @@ def security(cfg, usr, stor):
         add("fw", "Firewall active", "pass" if fw["active"] else "fail", "ufw is " + ("active" if fw["active"] else "inactive"))
         if fw["active"]: add("fw-default", "Incoming traffic denied by default", "pass" if "deny (incoming)" in (fw["defaults"] or "") else "fail", fw["defaults"] or "unknown")
     # ssh
+    base = None
     ssh = {"service": None if IS_MAC else (sh(["systemctl", "is-active", "ssh"], any_rc=True) or "").strip() or None, "config": None, "source": "sshd -T"}
     s = sh(["sshd", "-T"])
     if IS_MAC:
@@ -506,12 +507,16 @@ def security(cfg, usr, stor):
         ssh["service"] = "on (Remote Login enabled)" if on else "off (Remote Login disabled)"
         add("ssh-remote", "Remote Login (SSH server)", "warn" if on else "pass",
             "SSH is reachable on port 22; turn it off in System Settings > General > Sharing if this Mac does not need it" if on else "SSH is off, so nothing can log in remotely")
+        base = mac_sshd_text()
         if not s:
-            s = mac_sshd_text(); ssh["source"] = "/etc/ssh config files plus OpenSSH defaults (run with sudo for sshd -T)"
+            s = base; ssh["source"] = "/etc/ssh config files plus OpenSSH defaults (run with sudo for sshd -T)"
     if s:
         c = {}
         for l in s.splitlines():
-            k, _, v = l.partition(" "); c.setdefault(k, []).append(v)
+            k, _, v = l.partition(" "); c.setdefault(k.lower(), []).append(v)
+        if IS_MAC and base:   # anything sshd -T did not print comes from the config files + OpenSSH defaults
+            for l in base.splitlines():
+                k, _, v = l.partition(" "); c.setdefault(k, [v])
         ssh["config"] = {k: ", ".join(c[k]) for k in ("port", "permitrootlogin", "passwordauthentication", "pubkeyauthentication",
                          "permitemptypasswords", "maxauthtries", "logingracetime", "x11forwarding", "allowgroups", "clientaliveinterval") if k in c}
         g = ssh["config"].get

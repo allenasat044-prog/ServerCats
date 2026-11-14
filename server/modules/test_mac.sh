@@ -48,7 +48,8 @@ else rec fail "Website data" "missing: run ./server/labctl status"; fi
 
 printf '\n== Task 7.3  Validate expected outputs (macOS)\n'
 CUR_TASK=validate
-expect "SSH PermitRootLogin (OpenSSH default is safe)" "prohibit-password" "$(ssh_value PermitRootLogin prohibit-password)"
+rl=$(ssh_value PermitRootLogin prohibit-password)
+case "$rl" in no|prohibit-password|without-password) rec pass "SSH PermitRootLogin" "$rl (root cannot log in with a password)" ;; *) rec fail "SSH PermitRootLogin" "$rl (should be no or prohibit-password)" ;; esac
 expect "SSH PermitEmptyPasswords" "no" "$(ssh_value PermitEmptyPasswords no)"
 tries=$(ssh_value MaxAuthTries 6)
 if [ "$tries" -le 4 ] 2>/dev/null; then rec pass "SSH MaxAuthTries" "$tries"; else rec warn "SSH MaxAuthTries" "$tries (4 or less is stricter)"; fi
