@@ -20,6 +20,31 @@ LAB_APPLY="${LAB_APPLY:-0}"
 LAB_FORCE="${LAB_FORCE:-0}"
 export DEBIAN_FRONTEND=noninteractive
 
+# ---- macOS support (backup, cleanup, security run on a Mac; system, users, storage, cron are Linux-only) ----
+IS_DARWIN=0; [ "$(uname -s)" = Darwin ] && IS_DARWIN=1
+if [ "$IS_DARWIN" = 1 ]; then
+  PROJECT_DIR="$(cd "$SERVER_DIR/.." && pwd)"
+  # /srv and /var/lib are not usable on macOS: keep lab files in /Users/Shared instead
+  [ "$LAB_BASE" = /srv/lab ] && LAB_BASE=/Users/Shared/lab
+  [ "$STATE_DIR" = /var/lib/labserver ] && STATE_DIR="$LAB_BASE/.state"
+  # a Mac has no /srv/lab/shared or /home: back up this project unless MAC_BACKUP_SOURCES says otherwise
+  BACKUP_SOURCES="${MAC_BACKUP_SOURCES:-$PROJECT_DIR}"
+  export COPYFILE_DISABLE=1          # no ._ AppleDouble files inside tar archives
+fi
+
+# portable helpers (GNU on Linux, BSD on macOS)
+if [ "$IS_DARWIN" = 1 ]; then
+  fmode() { stat -f %Lp "$1"; }; fsize() { stat -f %z "$1"; }; fmtime() { stat -f %m "$1"; }
+else
+  fmode() { stat -c %a "$1"; }; fsize() { stat -c %s "$1"; }; fmtime() { stat -c %Y "$1"; }
+fi
+sha256_of() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
+sha256_check() { if command -v sha256sum >/dev/null 2>&1; then sha256sum -c --status "$1"; else shasum -a 256 -c "$1" >/dev/null 2>&1; fi; }
+now_iso() { date +%Y-%m-%dT%H:%M:%S%z | sed 's/\(..\)$/:\1/'; }
+sample_files() { if command -v shuf >/dev/null 2>&1; then shuf -n "$1"; else sort -R | head -n "$1"; fi; }
+# after a sudo run on macOS, hand the lab folder back to the person who ran sudo so they can read it
+give_to_invoker() { [ "$IS_DARWIN" = 1 ] && [ "$LAB_APPLY" = 1 ] && [ -n "${SUDO_USER:-}" ] && chown -R "$SUDO_USER" "$@" 2>/dev/null; return 0; }
+
 say()  { printf '%s\n' "$*"; }
 step() { printf '\n== %s\n' "$*"; }
 ok()   { printf '  [ok]   %s\n' "$*"; }
@@ -29,6 +54,12 @@ die()  { printf '  [FAIL] %s\n' "$*" >&2; exit 1; }
 
 require_linux() {
   [ "$(uname -s)" = Linux ] || die "this module configures a Linux server (Ubuntu/Debian); it cannot run on $(uname -s). Nothing was changed."
+}
+
+# for modules that also run on macOS
+need_root_if_apply_any() {
+  [ "$IS_DARWIN" = 1 ] || require_linux
+  if [ "$LAB_APPLY" = 1 ] && [ "$(id -u)" -ne 0 ]; then die "--apply needs root: run with sudo"; fi
 }
 
 need_root_if_apply() {

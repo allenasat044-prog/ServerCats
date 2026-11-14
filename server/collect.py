@@ -505,8 +505,10 @@ def security(cfg, usr, stor):
     if IS_MAC:
         on = subprocess.run(["nc", "-z", "-w", "1", "127.0.0.1", "22"], capture_output=True).returncode == 0
         ssh["service"] = "on (Remote Login enabled)" if on else "off (Remote Login disabled)"
-        add("ssh-remote", "Remote Login (SSH server)", "warn" if on else "pass",
-            "SSH is reachable on port 22; turn it off in System Settings > General > Sharing if this Mac does not need it" if on else "SSH is off, so nothing can log in remotely")
+        hardened = os.path.exists("/etc/ssh/sshd_config.d/00-labserver.conf")
+        add("ssh-remote", "Remote Login (SSH server)", "pass" if (hardened or not on) else "warn",
+            ("SSH is on but hardened by labctl (root login off, limited attempts)" if hardened else
+             "SSH is reachable on port 22; harden it with: sudo ./server/labctl security ssh --apply (or turn Remote Login off in System Settings > General > Sharing)") if on else "SSH is off, so nothing can log in remotely")
         base = mac_sshd_text()
         if not s:
             s = base; ssh["source"] = "/etc/ssh config files plus OpenSSH defaults (run with sudo for sshd -T)"

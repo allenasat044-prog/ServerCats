@@ -8,8 +8,9 @@ shows the **real** state of that server. Nothing on the site is built in: every 
 
 | Part | Linux server / VM (Ubuntu) | macOS | Windows |
 |---|---|---|---|
-| **Admin scripts** (`system`, `users`, `storage`, `security`, `backup`, `cleanup`, `cron`) | yes, this is what they are for | **no**: they refuse to run and change nothing | **no**: run them inside WSL or a Linux VM |
-| **`labctl all`** | plan / apply everything, then verify + validate | read-only: tests this Mac, then collects data | run it inside WSL / the VM |
+| **Admin scripts** `system`, `users`, `storage`, `cron` | yes, this is what they are for | **no**: they refuse to run and change nothing | **no**: run them inside WSL or a Linux VM |
+| **Admin scripts** `security`, `backup`, `cleanup` | yes | **yes**, macOS versions (macOS firewall, SSH hardening, tar backup in `/Users/Shared/lab`) | run them inside WSL or a Linux VM |
+| **`labctl all`** | plan / apply everything, then verify + validate | security + backup + cleanup, then tests this Mac and collects data | run it inside WSL / the VM |
 | **`labctl test`** | verify services, fix simulated faults, validate outputs | read-only checks of this Mac and the website | run it inside WSL / the VM |
 | **Collector** (`labctl status`) | full data | real values of the Mac (firewall, Remote Login/SSH, disks, network), Linux-only items shown as unavailable | run it inside WSL / the VM |
 | **Website** (`npm run dev`) | yes | yes | yes |
@@ -31,7 +32,9 @@ The commands are almost the same; only the shell and the package manager differ.
 | Collect real data | `sudo ./server/labctl status` | `./server/labctl status` | `wsl sudo ./server/labctl status` |
 | Run the checks | `sudo ./server/labctl test` | `./server/labctl test` | `wsl sudo ./server/labctl test` |
 | Everything, dry run | `./server/labctl all` | `./server/labctl all` (read-only) | `wsl ./server/labctl all` |
-| Everything, for real | `sudo ./server/labctl all --apply` | not possible (use a VM) | `wsl sudo ./server/labctl all --apply` |
+| Everything, for real | `sudo ./server/labctl all --apply` | `sudo ./server/labctl all --apply` (security, backup, cleanup only) | `wsl sudo ./server/labctl all --apply` |
+| Backup now | `sudo ./server/labctl backup --apply` | `sudo ./server/labctl backup --apply` | `wsl sudo ./server/labctl backup --apply` |
+| Harden (firewall, SSH) | `sudo ./server/labctl security --apply` | `sudo ./server/labctl security --apply` | `wsl sudo ./server/labctl security --apply` |
 | Fault-fixing demo | `sudo ./server/labctl test --apply` | not possible (use a VM) | `wsl sudo ./server/labctl test --apply` |
 | Start the website | `npm run dev -- --host` | `npm run dev` | `npm run dev` |
 | Open the website | `http://<server-ip>:5173` | `http://localhost:5173` | `http://localhost:5173` |
@@ -83,10 +86,19 @@ If the firewall is on, open that port first: set `FIREWALL_ALLOW_TCP="5173"` in 
 
 ## macOS
 
-A Mac cannot be the lab server (no apt, useradd, LVM or ufw), so the admin scripts (`system`, `users`,
-`storage`, `security`, `backup`, `cleanup`, `cron`) stop immediately with "cannot run on Darwin" and change
-nothing. `./server/labctl test` and `./server/labctl all` run read-only checks of this Mac (firewall, Remote
-Login/SSH, network, disk, Node, website data) and never change anything. What works on a Mac:
+A Mac cannot be the lab server (no apt, useradd, LVM or cron), so `system`, `users`, `storage` and `cron`
+stop immediately with "cannot run on Darwin" and change nothing. These work on a Mac:
+
+| Command (use `sudo` with `--apply`) | What it does on macOS |
+|---|---|
+| `labctl security --apply` | turns the macOS firewall and stealth mode on, installs the SSH hardening file `/etc/ssh/sshd_config.d/00-labserver.conf` (checked with `sshd -t`, reverted on error), closes home folders to 750 |
+| `labctl backup --apply` | tar.gz of this project (set `MAC_BACKUP_SOURCES` in `lab.conf` to change it) into `/Users/Shared/lab/backups`, SHA-256, gzip test, restore test, retention |
+| `labctl cleanup --apply` | deletes files older than `CLEANUP_DAYS` in `/Users/Shared/lab/tmp` |
+| `labctl all --apply` | the three above, then the tests and the data collector |
+| `labctl test`, `labctl status` | read-only checks and data for the website |
+
+Run `labctl backup` (without `--apply`) first to see the plan. Mac lab files live in `/Users/Shared/lab`, because `/srv` and `/var/lib` are not usable on macOS.
+Not provided on a Mac: scheduled runs (cron); run the commands by hand or use a Linux VM. What works on a Mac:
 
 ```bash
 brew install node                              # or download Node.js from nodejs.org

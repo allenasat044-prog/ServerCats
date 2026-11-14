@@ -13,7 +13,7 @@ LabServer administration
   labctl users    [groups|policy|accounts|perms]        groups, users, passwords, ownership
   labctl users    generate-roster [N]                   write server/students.csv with N accounts (default 100)
   labctl storage  [root|disk|shared]                    LVM, partitions, mounts, shared folders
-  labctl security [firewall|ssh|permissions]            ufw, SSH hardening, file permissions
+  labctl security [firewall|ssh|permissions]            firewall (ufw / macOS), SSH hardening, file permissions   (Linux + macOS)
   labctl backup   [create|verify|restore [FILE] [DIR]]  backup, integrity check, restore demo
   labctl cleanup                                        delete old files in the lab temp folder
   labctl cron                                           install the automatic schedule
@@ -40,7 +40,7 @@ linux_only() {
   cat >&2 <<MSG
 labctl: '$MODULE' configures a Linux server (Ubuntu/Debian) and cannot run on $(uname -s).
 Nothing was changed. Run it inside your Linux server or VM (see README: "Which computer runs what").
-Works on this computer:  ./server/labctl status   (read-only)   and   ./server/labctl users generate-roster
+Works on a Mac:  status, test, security, backup, cleanup, all, users generate-roster
 MSG
   exit 1
 }
@@ -58,15 +58,22 @@ case $MODULE in
       exit $rc
     fi
     exec bash "$HERE/modules/test.sh" ${ARGS[@]+"${ARGS[@]}"} ;;
-  system|storage|security|backup|cleanup|cron)
+  security|backup|cleanup)
+    # these three also run on macOS (the module itself refuses other systems)
+    exec bash "$HERE/modules/$MODULE.sh" ${ARGS[@]+"${ARGS[@]}"} ;;
+  system|storage|cron)
     linux_only
     exec bash "$HERE/modules/$MODULE.sh" ${ARGS[@]+"${ARGS[@]}"} ;;
   status)
     exec python3 "$HERE/collect.py" ${ARGS[@]+"${ARGS[@]}"} ;;
   all)
     if [ "$(uname -s)" = Darwin ]; then
-      echo "macOS: the administration modules only configure a Linux server, so nothing is changed."
-      echo "Running the read-only parts instead: tests of this Mac, then the data collector."
+      echo "macOS: running the modules that work on a Mac (security, backup, cleanup), then the tests and the data collector."
+      echo "system, users, storage and cron configure a Linux server and are skipped."
+      [ "$APPLY" = 1 ] || echo "PLAN ONLY (nothing is changed). Re-run with --apply (and sudo) to do it."
+      for m in security backup cleanup; do
+        bash "$HERE/modules/$m.sh" || { echo "labctl: module '$m' failed, stopping." >&2; exit 1; }
+      done
       bash "$HERE/modules/test_mac.sh"; python3 "$HERE/collect.py"; exit 0
     fi
     [ "$APPLY" = 1 ] || echo "PLAN ONLY (nothing is changed). Re-run with --apply to do it."

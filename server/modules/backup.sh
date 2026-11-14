@@ -13,7 +13,7 @@ verify_archive() {
   local f=$1
   GZ_OK=false; SHA_OK=false; LISTED=0
   gzip -t "$f" 2>/dev/null && GZ_OK=true
-  if [ -f "$f.sha256" ] && (cd "$(dirname "$f")" && sha256sum -c --status "$(basename "$f").sha256"); then SHA_OK=true; fi
+  if [ -f "$f.sha256" ] && (cd "$(dirname "$f")" && sha256_check "$(basename "$f").sha256"); then SHA_OK=true; fi
   LISTED=$(tar -tzf "$f" 2>/dev/null | grep -vc '/$')
 }
 
@@ -24,13 +24,13 @@ restore_test() {
   RESTORED=0; SAMPLED=0; MISMATCH=0; RESTORE_OK=false
   dest=$(mktemp -d "$BK/.restore-test.XXXXXX") || return 1
   if tar -xzf "$f" -C "$dest"; then
-    RESTORED=$(find "$dest" ! -type d | wc -l)
+    RESTORED=$(find "$dest" ! -type d | wc -l | tr -d " ")
     while IFS= read -r rf; do
       live="${rf#"$dest"}"
-      [ -f "$live" ] && [ "$(stat -c %Y "$live")" -lt "$started" ] || continue
+      [ -f "$live" ] && [ "$(fmtime "$live")" -lt "$started" ] || continue
       SAMPLED=$((SAMPLED + 1))
       cmp -s "$rf" "$live" || MISMATCH=$((MISMATCH + 1))
-    done < <(find "$dest" -type f | shuf -n 20)
+    done < <(find "$dest" -type f | sample_files 20)
     if [ "$RESTORED" -eq "$LISTED" ] && [ "$MISMATCH" -eq 0 ]; then RESTORE_OK=true; fi
   fi
   rm -rf "$dest"
@@ -51,10 +51,14 @@ step_create() {
   fi
   mkdir -p "$BK"; chmod 700 "$BK"
   STARTED=$(date +%s)
-  tar --warning=no-file-changed --exclude='*/.cache' -czf "$FILE" -C / "${rel[@]}"; rc=$?
+  if [ "$IS_DARWIN" = 1 ]; then
+    tar --exclude='*/.cache' --exclude='*/node_modules' -czf "$FILE" -C / "${rel[@]}"; rc=$?
+  else
+    tar --warning=no-file-changed --exclude='*/.cache' -czf "$FILE" -C / "${rel[@]}"; rc=$?
+  fi
   [ "$rc" -le 1 ] || die "tar failed (exit $rc)"
-  (cd "$BK" && sha256sum "$(basename "$FILE")" > "$(basename "$FILE").sha256")
-  ok "created $FILE ($(hb "$(stat -c %s "$FILE")"))"
+  (cd "$BK" && sha256_of "$(basename "$FILE")" > "$(basename "$FILE").sha256")
+  ok "created $FILE ($(hb "$(fsize "$FILE")"))"
 }
 
 step_verify() {
@@ -92,7 +96,7 @@ do_restore() {
   if [ -d "$dest" ] && [ -n "$(ls -A "$dest")" ]; then die "$dest is not empty"; fi
   run mkdir -p "$dest"
   run tar -xzf "$f" -C "$dest"
-  [ "$LAB_APPLY" = 1 ] && { say "  restored $(find "$dest" ! -type d | wc -l) files. Top level:"; ls -1 "$dest" | sed 's/^/    /'; }
+  [ "$LAB_APPLY" = 1 ] && { say "  restored $(find "$dest" ! -type d | wc -l | tr -d " ") files. Top level:"; ls -1 "$dest" | sed 's/^/    /'; }
   return 0
 }
 
@@ -104,13 +108,14 @@ full_run() {
   step_verify "$FILE" || verified=false
   step_restore_demo
   sha=$(cut -d' ' -f1 < "$FILE.sha256")
-  write_state backup "{\"file\":\"$(basename "$FILE")\",\"time\":\"$(date -Is)\",\"size\":$(stat -c %s "$FILE"),\"sha256\":\"$sha\",\"files\":$LISTED,\"restored\":$RESTORED,\"gzip_ok\":$GZ_OK,\"sha_ok\":$SHA_OK,\"restore_ok\":$RESTORE_OK,\"sampled\":$SAMPLED,\"mismatch\":$MISMATCH,\"seconds\":$(( $(date +%s) - t0 )),\"sources\":\"$(jesc "$BACKUP_SOURCES")\",\"keep\":$BACKUP_KEEP}"
+  write_state backup "{\"file\":\"$(basename "$FILE")\",\"time\":\"$(now_iso)\",\"size\":$(fsize "$FILE"),\"sha256\":\"$sha\",\"files\":$LISTED,\"restored\":$RESTORED,\"gzip_ok\":$GZ_OK,\"sha_ok\":$SHA_OK,\"restore_ok\":$RESTORE_OK,\"sampled\":$SAMPLED,\"mismatch\":$MISMATCH,\"seconds\":$(( $(date +%s) - t0 )),\"sources\":\"$(jesc "$BACKUP_SOURCES")\",\"keep\":$BACKUP_KEEP}"
   step_prune
   if [ "$verified" != true ] || [ "$RESTORE_OK" != true ]; then die "backup verification FAILED"; fi
 }
 
 main() {
-  need_root_if_apply
+  need_root_if_apply_any
+  trap 'give_to_invoker "$LAB_BASE"' EXIT
   case "${1:-}" in
     "")      full_run; if [ "$LAB_APPLY" != 1 ]; then step_prune; fi ;;
     create)  step_create ;;

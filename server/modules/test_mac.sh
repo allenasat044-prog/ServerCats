@@ -4,6 +4,7 @@
 # cron/ufw/LVM/useradd, so this is the macOS equivalent of "verify" and "validate".
 # Works with the bash 3.2 that macOS ships.
 HERE="$(cd "$(dirname "$0")" && pwd)"
+. "$HERE/../lib/common.sh"      # LAB_BASE, STATE_DIR and the portable helpers (fmode, fmtime, sha256_check)
 PROJECT="$(cd "$HERE/../.." && pwd)"
 OUT="$PROJECT/.labstate/tests.json"
 T=$'\t'
@@ -16,8 +17,6 @@ rec() { # level name [detail]
 }
 expect() { if [ "$2" = "$3" ]; then rec pass "$1" "expected $2, got $3"; else rec fail "$1" "expected $2, got ${3:-nothing}"; fi; }
 jesc() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
-
-if [ "$(uname -s)" = Darwin ]; then fmode() { stat -f %Lp "$1"; }; fmtime() { stat -f %m "$1"; }; else fmode() { stat -c %a "$1"; }; fmtime() { stat -c %Y "$1"; }; fi
 
 # first value wins, like sshd; files in sshd_config.d come first on macOS
 ssh_value() { # key default
@@ -45,6 +44,17 @@ if [ -f "$D" ]; then
   age=$(( ( $(date +%s) - $(fmtime "$D") ) / 60 ))
   if [ "$age" -le 15 ]; then rec pass "Website data" "public/data.json is ${age} min old"; else rec warn "Website data" "${age} min old: run ./server/labctl status"; fi
 else rec fail "Website data" "missing: run ./server/labctl status"; fi
+
+BK="$LAB_BASE/backups"
+bf=$(ls -1t "$BK"/lab-backup-*.tar.gz 2>/dev/null | head -n 1)
+if [ -z "$bf" ]; then rec warn "Latest backup" "none yet: sudo ./server/labctl backup --apply"
+elif gzip -t "$bf" 2>/dev/null && (cd "$BK" && sha256_check "$(basename "$bf").sha256"); then rec pass "Latest backup" "$(basename "$bf") passes gzip and SHA-256 checks"
+else rec fail "Latest backup" "$(basename "$bf") failed its integrity check"; fi
+if [ -f "$STATE_DIR/backup.json" ] && python3 -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get('restore_ok') else 1)" "$STATE_DIR/backup.json"; then rec pass "Restore demonstration" "last backup restored and matched the live files"
+elif [ -f "$STATE_DIR/backup.json" ]; then rec fail "Restore demonstration" "last restore test did not pass"
+else rec warn "Restore demonstration" "no backup run recorded yet"; fi
+if [ -f "$STATE_DIR/cleanup.json" ]; then rec pass "Routine cleanup" "has run (see the Backup & Recovery page)"; else rec warn "Routine cleanup" "has not run: sudo ./server/labctl cleanup --apply"; fi
+if [ -f /etc/ssh/sshd_config.d/00-labserver.conf ]; then rec pass "SSH hardening file" "/etc/ssh/sshd_config.d/00-labserver.conf installed"; else rec warn "SSH hardening file" "not installed: sudo ./server/labctl security --apply"; fi
 
 printf '\n== Task 7.3  Validate expected outputs (macOS)\n'
 CUR_TASK=validate
