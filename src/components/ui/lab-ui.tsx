@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { useLab } from "@/lib/data";
 
 export function Page({ title, subtitle, children }: { title: string; subtitle?: ReactNode; children: ReactNode }) {
   return (
@@ -51,6 +52,8 @@ export function Tbl({ head, rows, empty = "Nothing to show yet." }: { head: stri
 export const Cmd = ({ children }: { children: ReactNode }) => <pre className="overflow-x-auto rounded-lg bg-muted p-3 text-xs">{children}</pre>;
 
 export function NeedsRoot({ root }: { root: boolean }) {
-  if (root) return null;
+  const D = useLab();
+  // On a Mac the collector reads what macOS offers without root and the pages label the rest, so no warning is needed
+  if (root || D.platform === "darwin") return null;
   return <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">The collector ran without root, so firewall, SSH, LVM and password details are unavailable. Run <code>sudo ./server/labctl status</code> (or let the cron schedule do it).</div>;
 }
